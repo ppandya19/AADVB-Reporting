@@ -1,2 +1,2 @@
 # AADVB-Reporting
-AADVB Reporting includes intakes (RBK) and flown (MIRS) performance of the program at account level. Additional metrics include cobrand card spend, market performance and business channel performance
+[AADVB Reporting](https://app.powerbi.com/groups/f19eb98e-a207-4896-a907-7669e5fbdb47/reports/0572f71f-1624-46ef-ad38-c89b50f1742b/94d859c36e1dad6ae0c3?experience=power-bi&bookmarkGuid=cc1fd425899d2a224d9b) includes intakes (RBK) and flown (MIRS) performance of the program at account level. Additional metrics include cobrand card spend, market performance and business channel performance
