@@ -1,0 +1,423 @@
+
+DROP TABLE PROD_CORPVALIDT_DB.AADVBUS_INTAKES_FLOWN_DATA;
+CREATE TABLE PROD_CORPVALIDT_DB.AADVBUS_INTAKES_FLOWN_DATA AS   
+
+(
+
+-----INTAKES DATA FOR AADV BUSINESS ----
+
+SELECT
+
+     ------ PNR DATE------   
+     
+    A.PNR_CREATE_DT AS PNR_OR_FLIGHT_DT,
+    
+    CASE 
+        WHEN TD_DAY_OF_WEEK(A.PNR_CREATE_DT) = 1 THEN A.PNR_CREATE_DT
+        ELSE A.PNR_CREATE_DT + (7 - TD_DAY_OF_WEEK(A.PNR_CREATE_DT) + 1)
+    END AS WE_Sunday,
+    
+    
+    ------ TRIP INTENT ------
+   CASE Greatest(BUSINES_ONLY_PROB_PCT, BLEISURE_PROB_PCT + VFR_PROB_PCT + PERSNL_OTHR_PROB_PCT, VACTN_ONLY_PROB_PCT)
+        WHEN BUSINES_ONLY_PROB_PCT THEN 'NON-DISCRETIONARY'                                                                                     -- using same classification order as OR
+        WHEN BLEISURE_PROB_PCT + VFR_PROB_PCT + PERSNL_OTHR_PROB_PCT THEN 'BLENDED'
+        WHEN VACTN_ONLY_PROB_PCT THEN 'DISCRETIONARY'
+        ELSE 'DISCRETIONARY'                                                                                                                    -- allocate unscored PNRs to Discretionary
+    END AS TRIP_INTENT,
+    
+    ------ AP BAND------ 
+    
+            CASE WHEN A.LEG_DEP_DT  - A.PNR_CREATE_DT <= 13 THEN '000-013'
+        WHEN A.LEG_DEP_DT - A.PNR_CREATE_DT > 13 AND A.LEG_DEP_DT - A.PNR_CREATE_DT <= 20 THEN '014-020'  
+        WHEN A.LEG_DEP_DT - A.PNR_CREATE_DT > 20 AND A.LEG_DEP_DT - A.PNR_CREATE_DT <= 29 THEN '021-029' 
+        WHEN A.LEG_DEP_DT - A.PNR_CREATE_DT > 29 AND A.LEG_DEP_DT - A.PNR_CREATE_DT <= 59 THEN '030-059' 
+        WHEN A.LEG_DEP_DT - A.PNR_CREATE_DT > 59 AND A.LEG_DEP_DT - A.PNR_CREATE_DT <= 89 THEN '060-089'
+        ELSE '090-999' END AS AP_BAND,    
+ 
+
+      ------- ENTITY -------      
+	CASE 																																		-- entities as defined in capacity/revenue reporting
+	    WHEN INTNL_MKT_IND = 'D' THEN 'DOMESTIC'
+		WHEN CURR_RM_TACTCL_RPT_GROUP_DESC IN ('AUSTRALIA/NZ') THEN 'OCEANIA'
+		WHEN CURR_RM_TACTCL_RPT_GROUP_DESC IN ('PACIFIC') THEN 'EAST ASIA'
+		WHEN LEG_DEP_AIRPRT_IATA_CD = 'LHR' OR LEG_ARVL_AIRPRT_IATA_CD = 'LHR' THEN 'LHR'
+        WHEN CURR_RM_TACTCL_RPT_GROUP_DESC IN ('C.EUROPE', 'SPAIN','UK') THEN 'REST OF EUROPE'
+      	WHEN CURR_RM_TACTCL_RPT_GROUP_DESC IN ('OTHER ATLANTIC') THEN 'MIDDLE EAST/INDIA/AFRICA'
+        WHEN CURR_RM_TACTCL_RPT_GROUP_DESC IN ('C.AMERICA') THEN 'CENTRAL AMERICA'
+		WHEN CURR_RM_TACTCL_RPT_GROUP_DESC IN ('MEX-BUS','MEX-PLE') THEN 'MEXICO'
+		WHEN CURR_RM_TACTCL_RPT_GROUP_DESC IN ('CRB - PLS','CRB - PR/VI', 'CRB - VFR') THEN 'CARIBBEAN'
+		WHEN CURR_RM_TACTCL_RPT_GROUP_DESC IN ('N.RIM') THEN 'NORTHERN RIM'
+		WHEN CURR_RM_TACTCL_RPT_GROUP_DESC IN ('BRAZIL','S.AMERICA') THEN 'DEEP SOUTH'
+		ELSE 'CHECK'
+    END AS ENTITY,
+   
+    ------ PROGRAM ------
+    CASE 
+        WHEN A.MODFY_FARE_BASE_CD LIKE ANY ('_CA%','_DG%','_MZ%','_CB%','_CP%') THEN 'GOV'
+        WHEN A.BUSINES_ENTITY_ACCT_ID IS NOT NULL THEN 'AADV BUSINESS'                                                                          -- AADV Business if BEAN field is not null
+        WHEN PNR.PNR_LOCTR_ID IS NOT NULL THEN 'AADV BUSINESS'                                                                                  -- AADV Business if PNR exists in join
+        WHEN (B.CORP_CONTRCT_TYPE_NM IN ('AAIRPASS','AP') OR B.CART_CORP_SRC_CD = 'AP') AND B.CORP_CONTRCT_STATUS_CD = 'ACTIVE' THEN 'AP'
+        WHEN (B.CORP_CONTRCT_TYPE_NM IN ('Business ExtrAA','Business ExtrAA +','BX') OR B.CART_CORP_SRC_CD = 'BX') AND (CASE WHEN A.PNR_CREATE_DT >= '2024-02-01' THEN B.CORP_CONTRCT_STATUS_CD ELSE 'ACTIVE' END) = 'ACTIVE' THEN 'BX'
+        WHEN (B.CORP_CONTRCT_TYPE_NM IN ('AAL Alliance Express','AAL Alliance Express EMEA','AAL Alliance Joint Express EU','AAL Corporate Express','AAL Corporate Program CRB','AAL Corporate Program LAT','AAL Corporate Program MX AF','AAL oneworld Standard Discount',
+            'Alliance Express','Express','Express EMEA','xAAL Corporate Express','xAAL Corporate Express NON','xAAL Corporate Program CRB2','AAL Corporate Program SMB500','AAL Corporate Program SMB1M','AAL Corporate Express EU','AAL Corporate Express UK R','AAL Corporate Program SMB300',
+            'AAL Corporate Express IL','AAL Corporate Program LAT2','AAL Corporate Express ES','APAC SMB CN','AAL Corporate Express IN','AAL Corporate Program LAT1','AAL Corporate Program MX2','AAL Corporate Program APAC','APAC SMB KR','AAL Corporate Program CRB1',
+            'AAL Corporate Program MX1','oneworld Standard Discount','JAL Led Cat 1 Hybrid','AAL Corporate Program JCF2','JAL Led Cat 2 Template','AAL Corporate Express NON','AAL Corporate Program CRB2','AAL Corporate Express ATI','AAL Corporate Program JCF5',
+            'APAC SMB SE Asia, TW','AAL Corporate Program JCF3','AAL Corporate Express UK AF','APAC SMB HK','xAPAC SMB CN','xAAL Corporate Program SMB500','xAAL Corporate Program APAC','xAPAC SMB KR','xoneworld Standard Discount','xAAL Corporate Program SMB1M',
+            'xAAL Corporate Program SMB300','xAAL Corporate Program LAT2','xAAL Corporate Program MX1','xAAL Corporate Program LAT1','xAAL Corporate Program MX2','xAAL Corporate Program CRB1') OR B.CORP_CONTRCT_TYPE_NM  LIKE ANY ('%SMB%')) AND B.CORP_CONTRCT_STATUS_CD = 'ACTIVE' THEN 'SMB'           
+        WHEN B.CORP_CONTRCT_TYPE_NM LIKE ANY ('%Program LT%','%Program NAP%','%Prog Tier%') AND B.CORP_CONTRCT_STATUS_CD = 'ACTIVE' THEN 'LONG TAIL CORP'
+        WHEN B.CORP_CONTRCT_STATUS_CD = 'ACTIVE' AND B.CORP_CONTRCT_EXP_DT >= A.PNR_CREATE_DT THEN 'LARGE CORPORATE'
+        ELSE 'NON-PROGRAM'
+    END AS PROGRAM,
+
+     
+    ------ BEAN ------
+    A.BUSINES_ENTITY_ACCT_ID,
+    
+    CASE WHEN A.BUSINES_ENTITY_ACCT_ID IS NULL THEN 'NO_BEAN' ELSE 'BEAN' END AS BEAN_IND,  
+
+    ------ AGENCY AND CHANNEL ------
+    Coalesce(C.PRIME_CHANL_TYPE_CD, D.PRIME_CHANL_TYPE_CD, 'LEISURE') AS CHANNEL,-- if NULL then LEISURE, report Credited Channel
+    
+    Coalesce(C.GLOBAL_SLS_ACCT_ID ||' - '||C.GLOBAL_SLS_ACCT_NM, D.GLOBAL_SLS_ACCT_ID ||' - '||D.GLOBAL_SLS_ACCT_NM) AS AGENCY,   
+    
+        ------ DARC TYPE ------ 
+    CASE 
+        WHEN Coalesce(C.DEDICATE_ARC_TYPE_CD, D.DEDICATE_ARC_TYPE_CD) = 'DEDICATED_TLS' THEN 'TLS'
+        WHEN Coalesce(C.DEDICATE_ARC_TYPE_CD, D.DEDICATE_ARC_TYPE_CD) = 'MANAGED_GOV' THEN 'GOV'
+        WHEN Coalesce(C.DEDICATE_ARC_TYPE_CD, D.DEDICATE_ARC_TYPE_CD) IN ('MANAGED','MANAGED_MULTIPLE') THEN 'MANAGED'
+        ELSE 'UNMANAGED'
+    END AS DARC_TYPE,
+    
+    
+   /* ------ NDC FLAG ------
+    CASE                                                        
+        WHEN E.NDC_BKG_TYPE_TXT IS NOT NULL THEN 'NDC'
+        ELSE 'NON_NDC'
+    END AS NDC_IND,     
+    ------ NDC TYPE ------  
+    Coalesce(E.NDC_BKG_TYPE_TXT,'NON_NDC') AS NDC_TYPE,
+    */
+    
+   ------ CABIN ------ 
+    CASE WHEN A.OPERAT_FARE_CABIN_CD IN ('F','C') THEN 'Premium' ELSE 'Non-Premium' end AS CABIN_CD,
+       
+    ------ MARKET ------ 
+    A.OD_NON_DIRECTN_AIRPRT_IATA_CD AS MARKET,
+    
+    ------ MKT AND OP AIRLINE ------ 
+    CASE WHEN A.OPERAT_AIRLN_IATA_CD='AA' THEN 'MAINLINE' ELSE 'REGIONAL' END AS OPERAT_AIRLN_IATA_CD,
+    --A.MKT_AIRLN_IATA_CD AS MKT_AIRLN_IATA_CD,
+    
+    ------ MARKET TYPE------ 
+        
+        CASE WHEN
+    ((A.LEG_DEP_AIRPRT_IATA_CD) IN ('CLT','DFW','MIA','PHL') AND (A.LEG_ARVL_AIRPRT_IATA_CD) NOT IN
+    ('ATL','BOS','CVG','DCA','DEN','DTW','EWR','HOU','IAD','IAH',
+    'JFK','LAX','LGA','MSP','ORD','RDU','SEA','SFO','SLC')) OR 
+    ((A.LEG_ARVL_AIRPRT_IATA_CD) IN ('CLT','DFW','MIA','PHL') AND (A.LEG_DEP_AIRPRT_IATA_CD) NOT IN
+    ('ATL','BOS','CVG','DCA','DEN','DTW','EWR','HOU','IAD','IAH',
+    'JFK','LAX','LGA','MSP','ORD','RDU','SEA','SFO','SLC'))
+    THEN 'CORE'
+    WHEN 
+    ((A.LEG_DEP_AIRPRT_IATA_CD) IN ('CLT','DFW','MIA','PHL') AND (A.LEG_ARVL_AIRPRT_IATA_CD) IN
+    ('ATL','BOS','CVG','DCA','DEN','DTW','EWR','HOU','IAD','IAH',
+    'JFK','LAX','LGA','MSP','ORD','RDU','SEA','SFO','SLC')) OR 
+    ((A.LEG_ARVL_AIRPRT_IATA_CD) IN ('CLT','DFW','MIA','PHL') AND (A.LEG_DEP_AIRPRT_IATA_CD) IN
+    ('ATL','BOS','CVG','DCA','DEN','DTW','EWR','HOU','IAD','IAH',
+    'JFK','LAX','LGA','MSP','ORD','RDU','SEA','SFO','SLC'))
+    THEN 'STRATEGIC'
+    ELSE 'FOCUS' END AS MKT_TYPE,
+    
+
+     ------ TICKET DESIGNATOR------ 
+
+    CASE WHEN A.TICKET_DESGNTR_CD = '16ADVB' THEN '16ADVB' ELSE 'OTHER' END AS TICKET_DESGNTR_CD,
+
+    ------ METRICS ------   
+    
+    Sum(A.COUPON_PRORTE_AMT) AS INTAKES_CPN_REV,      -- used in RASM reporting (best practic
+    Sum(Cast(A.ONBRD_RPM_QTY AS NUMBER)) AS INTAKES_ONBRD_RPM_QTY,
+    Sum(Cast(A.ONBRD_PAX_QTY AS NUMBER)) AS INTAKES_ONBRD_PAX_QTY,
+    Count(DISTINCT A.PNR_LOCTR_ID||A.PNR_CREATE_DT) AS INTAKES_PNR_COUNT,   
+    
+    Cast(0 AS NUMBER) FLOWN_CPN_IU_REV,  
+    Cast(0 AS NUMBER) AS FLOWN_RPM,
+    Cast(0 AS NUMBER) AS FLOWN_PAX,
+    Cast(0 AS NUMBER) AS FLOWN_PNR_COUNT
+    
+    
+    ------ TABLES ------   
+    
+FROM PROD_RM_BUSINES_VW.RBK_OD_FLOW_DETL_INTK A
+
+    LEFT JOIN PROD_GLOBAL_CORP_CONTRCT_VW.SLS_CORP_ACCT_PROFIL  B                                                                               -- join with Sales Corp Profile to get Program Type                                                                                           
+        ON A.CART_NBR = B.CART_ID
+        AND Trunc(A.PNR_CREATE_DT, 'MONTH') = B.SLS_CORP_EFF_START_DT
+        AND B.CART_ID <> '000000'                                                                                                                -- excluding CART ID '000000' as it's not a valid CART ID
+    
+    LEFT JOIN PROD_GENL_SLS_VW.SLS_CHANL C                                                                                                      -- join with Sales Channel to get Channel and DARC type                                                     
+        ON Coalesce(A.BEST_TRAVEL_AGY_OUTLET_ID, A.ORIGNL_BKG_AGY_SLS_OUTLET_ID) = C.SLS_OUTLET_ID
+        AND Trunc(A.PNR_CREATE_DT, 'MONTH') = C.SLS_CHANL_EFF_START_DT                                                                                          -- join on TICKET_RPT_DT as it's historical
+
+
+    LEFT JOIN (SELECT Trunc(Current_Date,'MON') AS EFF_DT, A.* FROM PROD_GENL_SLS_VW.SLS_CHANL_CURR A) D                                                                                                     -- join with Sales Channel to get Channel and DARC type                                                     
+        ON Coalesce(A.BEST_TRAVEL_AGY_OUTLET_ID, A.ORIGNL_BKG_AGY_SLS_OUTLET_ID) = D.SLS_OUTLET_ID
+    AND Trunc(A.PNR_CREATE_DT, 'MONTH') = D.EFF_DT
+    
+    
+    LEFT JOIN (SELECT PNR_LOCTR_ID, PNR_CREATE_DT, NDC_BKG_TYPE_TXT                                                                             -- join with Master PNR to get NDC type
+            FROM PAXORDMSTR_PROD_PKG.PNR_MASTER WHERE NDC_BKG_TYPE_TXT IS NOT NULL
+            QUALIFY Row_Number () Over (PARTITION BY PNR_LOCTR_ID,PNR_CREATE_DT ORDER BY PNR_CREATE_TM DESC)=1) E                               -- using QUALIFY as there are dups in Master PNR, use latest version of PNR
+        ON A.PNR_LOCTR_ID = E.PNR_LOCTR_ID
+        AND A.PNR_CREATE_DT = E.PNR_CREATE_DT   
+        
+    LEFT JOIN (                                                                                                                                 -- temporary join for AADV Business validation
+        SELECT DISTINCT P.PNR_LOCTR_ID, P.PNR_CREATE_DT                                                                                         -- some agency records not labelled as AADV Business so looking at PNR info
+        FROM PROD_PNR_Booking_VWS.PNR_SPCL_RQST S
+        JOIN PROD_PNR_Booking_VWS.PNR P     
+            ON S.PNR_LOCTR_ID = P.PNR_LOCTR_ID    
+            AND S.PNR_CREATE_DT = P.PNR_CREATE_DT 
+            AND S.PNR_CREATE_TM = P.PNR_CREATE_TM 
+        JOIN PROD_PNR_TICKET_VWS.TICKET T   
+            ON P.PNR_LOCTR_ID = T.PNR_LOCTR_ID  
+            AND P.PNR_CREATE_DT = T.PNR_CREATE_DT   
+        WHERE 
+            ((S.RQST_TYPE_CD = 'CLID' AND S.SPCL_RQST_TXT LIKE '%BEAN%')                                                                        -- checking if the Special Service Request (SSR) field contains BEAN or AADV Business
+            OR (S.RQST_TYPE_CD = 'OTHS'  AND S.SPCL_RQST_TXT LIKE '%AADV BUSINESS%')   
+            OR T.TOUR_CD_BOX_TXT LIKE '%BEAN%')                                                                                                 -- checking if the Tour Code Box contains BEAN 
+            AND P.PNR_CREATE_DT >= '2023-10-16'                                                                                                 -- only looking at PNRs created starting 10/16/23 as that's when AADV Business launched
+        ) PNR
+        ON PNR.PNR_CREATE_DT = A.PNR_CREATE_DT
+        AND PNR.PNR_LOCTR_ID = A.PNR_LOCTR_ID
+
+WHERE                                                                                   -- flight months
+    A.ACTV_IND = 'Y' -- PNR not cancelled AND 
+    AND A.OPERAT_AIRLN_TYPE_CD IS NOT NULL   -- Mainline + Regional AA revenue pax only
+    --AND A.PNR_CREATE_DT >= '2024-01-01'
+    AND A.PNR_CREATE_DT BETWEEN '2023-10-16' AND Current_Date-2
+    AND PROGRAM = 'AADV BUSINESS'
+
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+
+
+
+----------------------------------
+
+UNION ALL 
+
+----------------------------------
+
+
+-----FLOWN DATA FOR AADV BUSINESS ----
+
+
+SELECT DISTINCT 
+
+
+     ------ FLIGHT DATE ------   
+A.RCN_FLIGHT_DEP_DT AS PNR_OR_FLIGHT_DT,
+
+CASE 
+        WHEN TD_DAY_OF_WEEK(A.RCN_FLIGHT_DEP_DT) = 1 THEN A.RCN_FLIGHT_DEP_DT
+        ELSE A.RCN_FLIGHT_DEP_DT + (7 - TD_DAY_OF_WEEK(A.RCN_FLIGHT_DEP_DT) + 1)
+    END AS WE_Sunday,
+
+     ------ TRIP INTENT ------   
+ CASE Greatest(A.BUSINES_ONLY_PROB_PCT, A.BLEISURE_PROB_PCT + A.VFR_PROB_PCT + A.PERSNL_OTHR_PROB_PCT, A.VACTN_ONLY_PROB_PCT)
+        WHEN A.BUSINES_ONLY_PROB_PCT THEN 'NON-DISCRETIONARY'                                                                                     -- using same classification order as OR
+        WHEN A.BLEISURE_PROB_PCT + A.VFR_PROB_PCT + A.PERSNL_OTHR_PROB_PCT THEN 'BLENDED'
+        WHEN A.VACTN_ONLY_PROB_PCT THEN 'DISCRETIONARY'
+        ELSE 'DISCRETIONARY'                                                                                                                    -- allocate unscored PNRs to Discretionary
+    END AS TRIP_INTENT,
+
+    ------- AP BAND -------
+
+        CASE WHEN A.RCN_FLIGHT_DEP_DT  - A.PNR_CREATE_DT <= 13 THEN '000-013'
+        WHEN A.RCN_FLIGHT_DEP_DT - A.PNR_CREATE_DT > 13 AND A.RCN_FLIGHT_DEP_DT - A.PNR_CREATE_DT <= 20 THEN '014-020'  
+        WHEN A.RCN_FLIGHT_DEP_DT - A.PNR_CREATE_DT > 20 AND A.RCN_FLIGHT_DEP_DT - A.PNR_CREATE_DT <= 29 THEN '021-029' 
+        WHEN A.RCN_FLIGHT_DEP_DT - A.PNR_CREATE_DT > 29 AND A.RCN_FLIGHT_DEP_DT - A.PNR_CREATE_DT <= 59 THEN '030-059' 
+        WHEN A.RCN_FLIGHT_DEP_DT - A.PNR_CREATE_DT > 59 AND A.RCN_FLIGHT_DEP_DT - A.PNR_CREATE_DT <= 89 THEN '060-089'
+        ELSE '090-999' END AS AP_BAND,
+        
+      ------- ENTITY -------      
+    CASE
+        WHEN A.RCN_LEG_MKT_MIRS_GEOG_AREA_CD IN ('C','D','H','K') THEN 'DOMESTIC'
+        WHEN A.RCN_LEG_MKT_MIRS_GEOG_AREA_CD IN ('P') AND A.RM_LEG_TACTL_ENTITY_DESC = 'AUSTRALIA/NZ' THEN 'OCEANIA'
+        WHEN A.RCN_LEG_MKT_MIRS_GEOG_AREA_CD IN ('P') THEN 'EAST ASIA'
+        WHEN A.RCN_LEG_MKT_MIRS_GEOG_AREA_CD IN ('A') AND (A.RCN_LEG_DEP_AIRPRT_IATA_CD = 'LHR' OR A.RCN_LEG_ARVL_AIRPRT_IATA_CD = 'LHR') THEN 'LHR'
+        WHEN A.RCN_LEG_MKT_MIRS_GEOG_AREA_CD IN ('A') AND A.RM_LEG_TACTL_ENTITY_DESC NOT IN ('OTHER ATLANTIC') THEN 'REST OF EUROPE'
+        WHEN A.RCN_LEG_MKT_MIRS_GEOG_AREA_CD IN ('I') OR A.RM_LEG_TACTL_ENTITY_DESC IN ('OTHER ATLANTIC') THEN 'MIDDLE EAST/INDIA/AFRICA'
+        WHEN A.RCN_LEG_MKT_MIRS_GEOG_AREA_CD IN ('L') THEN 'CENTRAL AMERICA'
+        WHEN A.RCN_LEG_MKT_MIRS_GEOG_AREA_CD IN ('M') THEN 'MEXICO'
+        WHEN A.RCN_LEG_MKT_MIRS_GEOG_AREA_CD IN ('N','U') THEN 'CARIBBEAN'
+        WHEN A.RCN_LEG_MKT_MIRS_GEOG_AREA_CD IN ('S') AND A.RM_LEG_TACTL_ENTITY_DESC IN ('N.RIM') THEN 'NORTHERN RIM'
+        WHEN A.RCN_LEG_MKT_MIRS_GEOG_AREA_CD IN ('S') THEN 'DEEP SOUTH'
+        ELSE 'CHECK'
+    END AS ENTITY,
+
+    ------ PROGRAM ------
+    CASE 
+        WHEN A.MIRS_FARE_BASE_CD LIKE ANY ('_CA%','_DG%','_MZ%','_CB%','_CP%') THEN 'GOV'
+        WHEN A.BUSINES_ENTITY_ACCT_ID IS NOT NULL THEN 'AADV BUSINESS'   -- AADV Business if BEAN field is not null
+        WHEN PNR.PNR_LOCTR_ID IS NOT NULL THEN 'AADV BUSINESS'  
+        WHEN (B.CORP_CONTRCT_TYPE_NM IN ('AAIRPASS','AP') OR B.CART_CORP_SRC_CD = 'AP') AND B.CORP_CONTRCT_STATUS_CD = 'ACTIVE' THEN 'AP'
+        WHEN (B.CORP_CONTRCT_TYPE_NM IN ('Business ExtrAA','Business ExtrAA +','BX') OR B.CART_CORP_SRC_CD = 'BX') AND (CASE WHEN A.TICKET_RPT_DT >= '2024-02-01' THEN B.CORP_CONTRCT_STATUS_CD ELSE 'ACTIVE' END) = 'ACTIVE' THEN 'BX'
+        WHEN (B.CORP_CONTRCT_TYPE_NM IN ('AAL Alliance Express','AAL Alliance Express EMEA','AAL Alliance Joint Express EU','AAL Corporate Express','AAL Corporate Program CRB','AAL Corporate Program LAT','AAL Corporate Program MX AF','AAL oneworld Standard Discount',
+            'Alliance Express','Express','Express EMEA','xAAL Corporate Express','xAAL Corporate Express NON','xAAL Corporate Program CRB2','AAL Corporate Program SMB500','AAL Corporate Program SMB1M','AAL Corporate Express EU','AAL Corporate Express UK R','AAL Corporate Program SMB300',
+            'AAL Corporate Express IL','AAL Corporate Program LAT2','AAL Corporate Express ES','APAC SMB CN','AAL Corporate Express IN','AAL Corporate Program LAT1','AAL Corporate Program MX2','AAL Corporate Program APAC','APAC SMB KR','AAL Corporate Program CRB1',
+            'AAL Corporate Program MX1','oneworld Standard Discount','JAL Led Cat 1 Hybrid','AAL Corporate Program JCF2','JAL Led Cat 2 Template','AAL Corporate Express NON','AAL Corporate Program CRB2','AAL Corporate Express ATI','AAL Corporate Program JCF5',
+            'APAC SMB SE Asia, TW','AAL Corporate Program JCF3','AAL Corporate Express UK AF','APAC SMB HK','xAPAC SMB CN','xAAL Corporate Program SMB500','xAAL Corporate Program APAC','xAPAC SMB KR','xoneworld Standard Discount','xAAL Corporate Program SMB1M',
+            'xAAL Corporate Program SMB300','xAAL Corporate Program LAT2','xAAL Corporate Program MX1','xAAL Corporate Program LAT1','xAAL Corporate Program MX2','xAAL Corporate Program CRB1') OR B.CORP_CONTRCT_TYPE_NM  LIKE ANY ('%SMB%')) AND B.CORP_CONTRCT_STATUS_CD = 'ACTIVE' THEN 'SMB'           
+        WHEN B.CORP_CONTRCT_TYPE_NM LIKE ANY ('%Program LT%','%Program NAP%','%Prog Tier%') AND B.CORP_CONTRCT_STATUS_CD = 'ACTIVE' THEN 'LONG TAIL CORP'
+        WHEN B.CORP_CONTRCT_STATUS_CD = 'ACTIVE' AND B.CORP_CONTRCT_EXP_DT >= A.TICKET_RPT_DT THEN 'LARGE CORPORATE'
+        ELSE 'NON-PROGRAM'
+    END AS PROGRAM,    
+    
+    ------ BEAN ------
+
+    A.BUSINES_ENTITY_ACCT_ID,
+   CASE WHEN A.BUSINES_ENTITY_ACCT_ID IS NULL THEN 'NO_BEAN' ELSE 'BEAN' END AS BEAN_IND,
+
+  ------ AGENCY AND CHANNEL ------
+    Coalesce(C.PRIME_CHANL_TYPE_CD, D.PRIME_CHANL_TYPE_CD, 'LEISURE') AS CHANNEL,-- if NULL then LEISURE, report Credited Channel
+    Coalesce(C.GLOBAL_SLS_ACCT_ID ||' - '||C.GLOBAL_SLS_ACCT_NM, D.GLOBAL_SLS_ACCT_ID ||' - '||D.GLOBAL_SLS_ACCT_NM) AS AGENCY,
+ 
+     ------ DARC TYPE ------ 
+    CASE 
+        WHEN Coalesce(C.DEDICATE_ARC_TYPE_CD, D.DEDICATE_ARC_TYPE_CD) = 'DEDICATED_TLS' THEN 'TLS'
+        WHEN Coalesce(C.DEDICATE_ARC_TYPE_CD, D.DEDICATE_ARC_TYPE_CD) = 'MANAGED_GOV' THEN 'GOV'
+        WHEN Coalesce(C.DEDICATE_ARC_TYPE_CD, D.DEDICATE_ARC_TYPE_CD) IN ('MANAGED','MANAGED_MULTIPLE') THEN 'MANAGED'
+        ELSE 'UNMANAGED'
+    END AS DARC_TYPE,
+ 
+ 
+    
+   /* ------ NDC FLAG ------
+    CASE                                                        
+        WHEN E.NDC_BKG_TYPE_TXT IS NOT NULL THEN 'NDC'
+        ELSE 'NON_NDC'
+    END AS NDC_IND,     
+    ------ NDC TYPE ------  
+    Coalesce(E.NDC_BKG_TYPE_TXT,'NON_NDC') AS NDC_TYPE,
+    */
+    
+   ------ CABIN ------ 
+   CASE WHEN  A.RCN_CABIN_CD IN ('F','C') THEN 'Premium' ELSE 'Non-Premium' end AS CABIN_CD,
+    --A.RCN_CABIN_CD AS OPERAT_FARE_CABIN_CD,
+       
+    ------ ORIGIN AND DESTINATION ------ 
+    A.RCN_LEG_N_DIRECTN_ARPT_PAIR_CD AS MARKET,
+    
+    ------ MKT AND OP AIRLINE ------ 
+	CASE WHEN A.RCN_AIRLN_IATA_CD='AA' THEN 'MAINLINE' ELSE 'REGIONAL' END AS OPERAT_AIRLN_IATA_CD,
+  ----   AS OPERAT_AIRLN_IATA_CD,
+   ---- A.MKT_AIRLN_IATA_CD AS MKT_AIRLN_IATA_CD,
+    
+    ------ MARKET TYPE------ 
+        
+        CASE WHEN
+    ((A.RCN_LEG_DEP_AIRPRT_IATA_CD) IN ('CLT','DFW','MIA','PHL') AND (A.RCN_LEG_ARVL_AIRPRT_IATA_CD) NOT IN
+    ('ATL','BOS','CVG','DCA','DEN','DTW','EWR','HOU','IAD','IAH',
+    'JFK','LAX','LGA','MSP','ORD','RDU','SEA','SFO','SLC')) OR 
+    ((A.RCN_LEG_ARVL_AIRPRT_IATA_CD) IN ('CLT','DFW','MIA','PHL') AND (A.RCN_LEG_DEP_AIRPRT_IATA_CD) NOT IN
+    ('ATL','BOS','CVG','DCA','DEN','DTW','EWR','HOU','IAD','IAH',
+    'JFK','LAX','LGA','MSP','ORD','RDU','SEA','SFO','SLC'))
+    THEN 'CORE'
+    WHEN 
+    ((A.RCN_LEG_DEP_AIRPRT_IATA_CD) IN ('CLT','DFW','MIA','PHL') AND (A.RCN_LEG_ARVL_AIRPRT_IATA_CD) IN
+    ('ATL','BOS','CVG','DCA','DEN','DTW','EWR','HOU','IAD','IAH',
+    'JFK','LAX','LGA','MSP','ORD','RDU','SEA','SFO','SLC')) OR 
+    ((A.RCN_LEG_ARVL_AIRPRT_IATA_CD) IN ('CLT','DFW','MIA','PHL') AND (A.RCN_LEG_DEP_AIRPRT_IATA_CD) IN
+    ('ATL','BOS','CVG','DCA','DEN','DTW','EWR','HOU','IAD','IAH',
+    'JFK','LAX','LGA','MSP','ORD','RDU','SEA','SFO','SLC'))
+    THEN 'STRATEGIC'
+    ELSE 'FOCUS' END AS MKT_TYPE,
+    
+
+     ------ TICKET DESIGNATOR------ 
+
+    CASE WHEN A.TICKET_DESGNTR_CD = '16ADVB' THEN '16ADVB' ELSE 'OTHER' END AS TICKET_DESGNTR_CD,
+
+    ------ METRICS ------   
+    
+    
+    Cast(0 AS NUMBER) INTAKES_CPN_REV,  
+    Cast(0 AS NUMBER) AS INTAKES_ONBRD_RPM_QTY,
+    Cast(0 AS NUMBER) AS INTAKES_ONBRD_PAX_QTY,
+    Cast(0 AS NUMBER) AS INTAKES_PNR_COUNT,  
+
+    Sum(A.MIRS_CPN_LEG_ONLY_REV_AMT)+Sum(A.INSTANT_UPSELL_REV_AMT) AS FLOWN_CPN_IU_REV,                                                                  -- used in RASM reporting (best practice)
+    Sum(A.ACTL_RPM_QTY) AS FLOWN_RPM,
+    Sum(A.PAX_CNT) AS FLOWN_PAX,
+    Count(DISTINCT A.PNR_LOCTR_ID||A.PNR_CREATE_DT) AS FLOWN_PNR_COUNT
+
+    
+    ------ TABLES ------   
+    
+FROM PROD_MIRS_VW.MIRS_ALL_COUPON_LEG A
+
+ LEFT JOIN PROD_GLOBAL_CORP_CONTRCT_VW.SLS_CORP_ACCT_PROFIL  B                                                                               -- join with Sales Corp Profile to get Program Type
+        ON A.CART_ID = B.CART_ID
+        AND A.TICKET_RPT_DT = B.SLS_CORP_EFF_START_DT
+        AND B.CART_ID <> '000000'                      
+    
+ LEFT JOIN PROD_GENL_SLS_VW.SLS_CHANL C                                                                                                      -- join with Sales Channel to get Channel and DARC type                                                     
+        ON A.CREDIT_SLS_OUTLET_ID = C.SLS_OUTLET_ID
+        AND Trunc(A.TICKET_RPT_DT , 'MONTH') = C.SLS_CHANL_EFF_START_DT                                                                                          -- join on TICKET_RPT_DT as it's historical
+
+
+ LEFT JOIN (SELECT Trunc(Current_Date,'MON') AS EFF_DT, A.* FROM PROD_GENL_SLS_VW.SLS_CHANL_CURR A) D                                                                                                     -- join with Sales Channel to get Channel and DARC type                                                     
+    ON A.CREDIT_SLS_OUTLET_ID = D.SLS_OUTLET_ID
+    AND Trunc(A.TICKET_RPT_DT , 'MONTH') = D.EFF_DT
+    
+    
+ LEFT JOIN (SELECT PNR_LOCTR_ID, PNR_CREATE_DT, NDC_BKG_TYPE_TXT                                                                             -- join with Master PNR to get NDC type
+            FROM PAXORDMSTR_PROD_PKG.PNR_MASTER WHERE NDC_BKG_TYPE_TXT IS NOT NULL
+            QUALIFY Row_Number () Over (PARTITION BY PNR_LOCTR_ID,PNR_CREATE_DT ORDER BY PNR_CREATE_TM DESC)=1) E                               -- using QUALIFY as there are dups in Master PNR, use latest version of PNR
+        ON A.PNR_LOCTR_ID = E.PNR_LOCTR_ID
+        AND A.PNR_CREATE_DT = E.PNR_CREATE_DT   
+
+LEFT JOIN  
+
+        (
+        SELECT DISTINCT
+
+        p.PNR_LOCTR_ID||p.PNR_CREATE_DT AS PNR,
+        P.PNR_CREATE_DT,
+        P.PNR_LOCTR_ID
+
+        FROM PROD_PNR_Booking_VWS.PNR_SPCL_RQST SSR
+        JOIN PROD_PNR_Booking_VWS.PNR P 
+        ON SSR.PNR_LOCTR_ID = p.PNR_LOCTR_ID
+        AND SSR.PNR_CREATE_DT = p.PNR_CREATE_DT
+        AND SSR.PNR_CREATE_TM = p.PNR_CREATE_TM
+        JOIN PROD_PNR_TICKET_VWS.TICKET T
+        ON p.PNR_LOCTR_ID = T.PNR_LOCTR_ID
+        AND p.PNR_CREATE_DT = T.PNR_CREATE_DT
+        WHERE ((SSR.rqst_type_cd = 'CLID'
+        AND SSR.SPCL_RQST_TXT LIKE '%BEAN%')
+        OR 
+        (SSR.rqst_type_cd = 'OTHS'
+        AND SSR.SPCL_RQST_TXT LIKE '%AADV BUSINESS%')
+        OR 
+        (t.TOUR_CD_BOX_TXT LIKE '%BEAN%')
+        AND P.PNR_CREATE_DT >= '2023-10-16'
+        ) )PNR
+
+        ON   PNR.PNR_CREATE_DT = A.PNR_CREATE_DT
+        AND  PNR.PNR_LOCTR_ID = A.PNR_LOCTR_ID
+       
+
+   
+WHERE TICKET_RPT_DT BETWEEN '2023-10-01' AND Current_Date-2
+AND FLIGHT_TRAFC_RCN_TYPE_CD IN ('A','C')  -- flight months
+AND PROGRAM = 'AADV BUSINESS'
+    
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+
+
+)WITH DATA;
+
+
+SELECT * FROM PROD_CORPVALIDT_DB.AADVBUS_INTAKES_FLOWN_DATA;
